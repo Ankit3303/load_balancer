@@ -1,0 +1,74 @@
+trigger:
+- main
+
+pool:
+  name: acfirstpool
+
+stages:
+# ---------------- BUILD / PLAN STAGE ----------------
+- stage: Plan
+  displayName: Terraform Plan
+  jobs:
+  - job: PlanJob
+    steps:
+    - task: TerraformInstaller@1
+      inputs:
+        terraformVersion: 'latest'
+
+    - task: TerraformTask@5
+      inputs:
+        provider: 'azurerm'
+        command: 'init'
+        workingDirectory: '$(System.DefaultWorkingDirectory)/dev'
+        backendServiceArm: 'acservice'
+        backendAzureRmResourceGroupName: 'backend-rg'
+        backendAzureRmStorageAccountName: 'backendstrg'
+        backendAzureRmContainerName: 'strg'
+        backendAzureRmKey: 'ackey'
+
+    - task: TerraformTask@5
+      inputs:
+        provider: 'azurerm'
+        command: 'validate'
+        workingDirectory: '$(System.DefaultWorkingDirectory)/dev'
+
+    - task: TerraformTask@5
+      inputs:
+        provider: 'azurerm'
+        command: 'plan'
+        workingDirectory: '$(System.DefaultWorkingDirectory)/dev'
+        environmentServiceNameAzureRM: 'acservice'
+
+# ---------------- MANUAL APPROVAL STAGE ----------------
+- stage: Approval
+  displayName: Manual Approval
+  dependsOn: Plan
+  jobs:
+  - job: ApprovalJob
+    pool: server
+    steps:
+    - task: ManualValidation@0
+      inputs:
+        instructions: 'Please review Terraform plan and approve to apply.'
+        notifyUsers: |
+          chaudhary.ankit77@gmail.com
+        timeoutInMinutes: 1440
+
+# ---------------- APPLY STAGE ----------------
+- stage: Apply
+  displayName: Terraform Apply
+  dependsOn: Approval
+  condition: succeeded()
+  jobs:
+  - job: ApplyJob
+    steps:
+    - task: TerraformInstaller@1
+      inputs:
+        terraformVersion: 'latest'
+
+    - task: TerraformTask@5
+      inputs:
+        provider: 'azurerm'
+        command: 'apply'
+        workingDirectory: '$(System.DefaultWorkingDirectory)/dev'
+        environmentServiceNameAzureRM: 'acservice'
